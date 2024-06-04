@@ -1,0 +1,306 @@
+#include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
+#include <cmath>
+#include <ctime>
+#include <cstdlib>
+
+#ifdef SFML_SYSTEM_IOS
+#include <SFML/Main.hpp>
+#endif
+
+std::string resourcesDir()
+{
+#ifdef SFML_SYSTEM_IOS
+    return "";
+#else
+    return "resources/";
+#endif
+}
+
+int main()
+{
+    std::srand(static_cast<unsigned int>(std::time(NULL)));
+
+    const float pi = 3.14159f;
+    const float gameWidth = 800;
+    const float gameHeight = 600;
+    sf::Vector2f paddleSize(25, 100);
+    float ballRadius = 10.f;
+    float ballSpeed = 400.f;
+    const float initialBallSpeed = 400.f;
+
+    sf::RenderWindow window(sf::VideoMode(static_cast<unsigned int>(gameWidth), static_cast<unsigned int>(gameHeight), 32), "SFML Tennis",
+        sf::Style::Titlebar | sf::Style::Close);
+    window.setVerticalSyncEnabled(true);
+
+    sf::SoundBuffer ballSoundBuffer;
+    if (!ballSoundBuffer.loadFromFile(resourcesDir() + "ball.wav"))
+        return EXIT_FAILURE;
+    sf::Sound ballSound(ballSoundBuffer);
+
+    sf::Texture sfmlLogoTexture;
+    if (!sfmlLogoTexture.loadFromFile(resourcesDir() + "sfml_logo.png"))
+        return EXIT_FAILURE;
+    sf::Sprite sfmlLogo;
+    sfmlLogo.setTexture(sfmlLogoTexture);
+    sfmlLogo.setPosition(170, 50);
+
+    sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile(resourcesDir() + "ice.jpg"))
+        return EXIT_FAILURE;
+    sf::Sprite background;
+    background.setTexture(backgroundTexture);
+    background.setPosition(0, 0);
+
+    sf::RectangleShape leftPaddleTop;
+    leftPaddleTop.setSize(sf::Vector2f(paddleSize.x - 3, paddleSize.y / 2 - 3));
+    leftPaddleTop.setOutlineThickness(3);
+    leftPaddleTop.setOutlineColor(sf::Color::Black);
+    leftPaddleTop.setFillColor(sf::Color(255, 0, 0));
+    leftPaddleTop.setOrigin(paddleSize.x / 2.f, (paddleSize.y / 2.f) / 2.f);
+
+    sf::RectangleShape leftPaddleBottom;
+    leftPaddleBottom.setSize(sf::Vector2f(paddleSize.x - 3, paddleSize.y / 2 - 3));
+    leftPaddleBottom.setOutlineThickness(3);
+    leftPaddleBottom.setOutlineColor(sf::Color::Black);
+    leftPaddleBottom.setFillColor(sf::Color(0, 0, 255));
+    leftPaddleBottom.setOrigin(paddleSize.x / 2.f, (paddleSize.y / 2.f) / 2.f);
+
+    sf::RectangleShape rightPaddleTop;
+    rightPaddleTop.setSize(sf::Vector2f(paddleSize.x - 3, paddleSize.y / 2 - 3));
+    rightPaddleTop.setOutlineThickness(3);
+    rightPaddleTop.setOutlineColor(sf::Color::Black);
+    rightPaddleTop.setFillColor(sf::Color(255, 0, 0));
+    rightPaddleTop.setOrigin(paddleSize.x / 2.f, (paddleSize.y / 2.f) / 2.f);
+
+    sf::RectangleShape rightPaddleBottom;
+    rightPaddleBottom.setSize(sf::Vector2f(paddleSize.x - 3, paddleSize.y / 2 - 3));
+    rightPaddleBottom.setOutlineThickness(3);
+    rightPaddleBottom.setOutlineColor(sf::Color::Black);
+    rightPaddleBottom.setFillColor(sf::Color(0, 0, 255));
+    rightPaddleBottom.setOrigin(paddleSize.x / 2.f, (paddleSize.y / 2.f) / 2.f);
+
+    sf::CircleShape ball;
+    ball.setRadius(ballRadius - 3);
+    ball.setOutlineThickness(2);
+    ball.setOutlineColor(sf::Color::Black);
+    ball.setFillColor(sf::Color::White);
+    ball.setOrigin(ballRadius / 2, ballRadius / 2);
+
+    sf::Font font;
+    if (!font.loadFromFile(resourcesDir() + "tuffy.ttf"))
+        return EXIT_FAILURE;
+
+    sf::Text scoreText;
+    scoreText.setFont(font);
+    scoreText.setCharacterSize(30);
+    scoreText.setPosition(gameWidth / 2.f - 20.f, 20.f);
+    scoreText.setFillColor(sf::Color::White);
+
+    sf::Clock AITimer;
+    const sf::Time AITime = sf::seconds(0.1f);
+    const float paddleSpeed = 400.f;
+    float rightPaddleSpeed = 0.f;
+    float ballAngle = 0.f;
+
+    sf::Clock clock;
+    bool isPlaying = false;
+    int leftPaddleScore = 0;
+    int rightPaddleScore = 0;
+
+    auto resetBall = [&]() {
+        ball.setPosition(gameWidth / 2.f, gameHeight / 2.f);
+        ballSpeed = initialBallSpeed;
+        do {
+            ballAngle = static_cast<float>(std::rand() % 360) * 2.f * pi / 360.f;
+        } while (std::abs(std::cos(ballAngle)) < 0.7f);
+        };
+
+    isPlaying = true;
+    clock.restart();
+    leftPaddleTop.setPosition(10.f + paddleSize.x / 2.f, gameHeight / 2.f - paddleSize.y / 4.f);
+    leftPaddleBottom.setPosition(10.f + paddleSize.x / 2.f, gameHeight / 2.f + paddleSize.y / 4.f);
+    rightPaddleTop.setPosition(gameWidth - 10.f - paddleSize.x / 2.f, gameHeight / 2.f - paddleSize.y / 4.f);
+    rightPaddleBottom.setPosition(gameWidth - 10.f - paddleSize.x / 2.f, gameHeight / 2.f + paddleSize.y / 4.f);
+    resetBall();
+
+    while (window.isOpen())
+    {
+        sf::Event event;
+        while (window.pollEvent(event))
+        {
+            if ((event.type == sf::Event::Closed) ||
+                ((event.type == sf::Event::KeyPressed) && (event.key.code == sf::Keyboard::Escape)))
+            {
+                window.close();
+                break;
+            }
+
+            if (event.type == sf::Event::Resized)
+            {
+                sf::View view;
+                view.setSize(gameWidth, gameHeight);
+                view.setCenter(gameWidth / 2.f, gameHeight / 2.f);
+                window.setView(view);
+            }
+        }
+
+        if (isPlaying)
+        {
+            float deltaTime = clock.restart().asSeconds();
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up) &&
+                (leftPaddleTop.getPosition().y - paddleSize.y / 4 > 5.f))
+            {
+                leftPaddleTop.move(0.f, -paddleSpeed * deltaTime);
+                leftPaddleBottom.move(0.f, -paddleSpeed * deltaTime);
+            }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down) &&
+                (leftPaddleBottom.getPosition().y + paddleSize.y / 4 < gameHeight - 5.f))
+            {
+                leftPaddleTop.move(0.f, paddleSpeed * deltaTime);
+                leftPaddleBottom.move(0.f, paddleSpeed * deltaTime);
+            }
+
+            if (((rightPaddleSpeed < 0.f) && (rightPaddleTop.getPosition().y - paddleSize.y / 4 > 5.f)) ||
+                ((rightPaddleSpeed > 0.f) && (rightPaddleBottom.getPosition().y + paddleSize.y / 4 < gameHeight - 5.f)))
+            {
+                rightPaddleTop.move(0.f, rightPaddleSpeed * deltaTime);
+                rightPaddleBottom.move(0.f, rightPaddleSpeed * deltaTime);
+            }
+
+            if (AITimer.getElapsedTime() > AITime)
+            {
+                AITimer.restart();
+                if (ball.getPosition().y + ballRadius > rightPaddleTop.getPosition().y + paddleSize.y / 4)
+                    rightPaddleSpeed = paddleSpeed;
+                else if (ball.getPosition().y - ballRadius < rightPaddleTop.getPosition().y - paddleSize.y / 4)
+                    rightPaddleSpeed = -paddleSpeed;
+                else
+                    rightPaddleSpeed = 0.f;
+            }
+
+            float factor = ballSpeed * deltaTime;
+            ball.move(std::cos(ballAngle) * factor, std::sin(ballAngle) * factor);
+
+            if (ball.getPosition().x - ballRadius < 0.f)
+            {
+                rightPaddleScore++;
+                resetBall();
+            }
+            if (ball.getPosition().x + ballRadius > gameWidth)
+            {
+                leftPaddleScore++;
+                resetBall();
+            }
+            if (ball.getPosition().y - ballRadius < 0.f)
+            {
+                ballSound.play();
+                ballAngle = -ballAngle;
+                ball.setPosition(ball.getPosition().x, ballRadius + 0.1f);
+            }
+            if (ball.getPosition().y + ballRadius > gameHeight)
+            {
+                ballSound.play();
+                ballAngle = -ballAngle;
+                ball.setPosition(ball.getPosition().x, gameHeight - ballRadius - 0.1f);
+            }
+
+            // Refined collision detection between ball and paddles
+            auto ballIntersectsRectangle = [&](const sf::RectangleShape& rect) {
+                float ballLeft = ball.getPosition().x - ballRadius;
+                float ballRight = ball.getPosition().x + ballRadius;
+                float ballTop = ball.getPosition().y - ballRadius;
+                float ballBottom = ball.getPosition().y + ballRadius;
+
+                float rectLeft = rect.getPosition().x - rect.getSize().x / 2.f;
+                float rectRight = rect.getPosition().x + rect.getSize().x / 2.f;
+                float rectTop = rect.getPosition().y - rect.getSize().y / 2.f;
+                float rectBottom = rect.getPosition().y + rect.getSize().y / 2.f;
+
+                return !(ballLeft > rectRight || ballRight < rectLeft || ballTop > rectBottom || ballBottom < rectTop);
+                };
+
+            // Left Paddle
+            if (ballIntersectsRectangle(leftPaddleTop))
+            {
+                ballAngle = pi - ballAngle + (std::rand() % 20) * pi / 180;
+                ball.setPosition(leftPaddleTop.getPosition().x + ballRadius + paddleSize.x / 2 + 0.1f, ball.getPosition().y);
+                ballSound.play();
+                if (ball.getFillColor() == sf::Color::Red)
+                    ballSpeed += 50.f;
+                else
+                {
+                    ballSpeed = initialBallSpeed;
+                    ball.setFillColor(sf::Color::Red);
+                }
+            }
+
+            if (ballIntersectsRectangle(leftPaddleBottom))
+            {
+                ballAngle = pi - ballAngle + (std::rand() % 20) * pi / 180;
+                ball.setPosition(leftPaddleBottom.getPosition().x + ballRadius + paddleSize.x / 2 + 0.1f, ball.getPosition().y);
+                ballSound.play();
+                if (ball.getFillColor() == sf::Color::Blue)
+                    ballSpeed += 50.f;
+                else
+                {
+                    ballSpeed = initialBallSpeed;
+                    ball.setFillColor(sf::Color::Blue);
+                }
+            }
+
+            // Right Paddle
+            if (ballIntersectsRectangle(rightPaddleTop))
+            {
+                ballAngle = pi - ballAngle + (std::rand() % 20) * pi / 180;
+                ball.setPosition(rightPaddleTop.getPosition().x - ballRadius - paddleSize.x / 2 - 0.1f, ball.getPosition().y);
+                ballSound.play();
+                if (ball.getFillColor() == sf::Color::Red)
+                    ballSpeed += 100.f;
+                else
+                {
+                    ballSpeed = initialBallSpeed;
+                    ball.setFillColor(sf::Color::Red);
+                }
+            }
+
+            if (ballIntersectsRectangle(rightPaddleBottom))
+            {
+                ballAngle = pi - ballAngle + (std::rand() % 20) * pi / 180;
+                ball.setPosition(rightPaddleBottom.getPosition().x - ballRadius - paddleSize.x / 2 - 0.1f, ball.getPosition().y);
+                ballSound.play();
+                if (ball.getFillColor() == sf::Color::Blue)
+                    ballSpeed += 50.f;
+                else
+                {
+                    ballSpeed = initialBallSpeed;
+                    ball.setFillColor(sf::Color::Blue);
+                }
+            }
+
+            scoreText.setString(std::to_string(leftPaddleScore) + " - " + std::to_string(rightPaddleScore));
+        }
+
+        window.clear();
+        window.draw(background);
+
+        if (isPlaying)
+        {
+            window.draw(leftPaddleTop);
+            window.draw(leftPaddleBottom);
+            window.draw(rightPaddleTop);
+            window.draw(rightPaddleBottom);
+            window.draw(ball);
+        }
+        else
+        {
+            window.draw(sfmlLogo);
+        }
+
+        window.draw(scoreText);
+        window.display();
+    }
+
+    return EXIT_SUCCESS;
+}
